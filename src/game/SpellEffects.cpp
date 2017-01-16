@@ -558,7 +558,7 @@ void Spell::EffectDummy(SpellEffectIndex eff_idx)
                         const SpellCooldowns& cm = ((Player*)m_caster)->GetSpellCooldownMap();
                         for (SpellCooldowns::const_iterator itr = cm.begin(); itr != cm.end();)
                         {
-                            SpellEntry const* spellInfo = sSpellStore.LookupEntry(itr->first);
+                            SpellEntry const* spellInfo = sSpellTemplate.LookupEntry<SpellEntry>(itr->first);
                             if (spellInfo->SpellFamilyName == SPELLFAMILY_ROGUE &&
                                     spellInfo->Id != m_spellInfo->Id && GetSpellRecoveryTime(spellInfo) > 0)
                                 ((Player*)m_caster)->RemoveSpellCooldown((itr++)->first, true);
@@ -958,7 +958,7 @@ void Spell::EffectDummy(SpellEffectIndex eff_idx)
                         const SpellCooldowns& cm = ((Player*)m_caster)->GetSpellCooldownMap();
                         for (SpellCooldowns::const_iterator itr = cm.begin(); itr != cm.end();)
                         {
-                            SpellEntry const* spellInfo = sSpellStore.LookupEntry(itr->first);
+                            SpellEntry const* spellInfo = sSpellTemplate.LookupEntry<SpellEntry>(itr->first);
                             if (spellInfo->SpellFamilyName == SPELLFAMILY_MAGE
                                 && (GetSpellSchoolMask(spellInfo) & SPELL_SCHOOL_MASK_FROST)
                                 && spellInfo->Id != m_spellInfo->Id && GetSpellRecoveryTime(spellInfo) > 0)
@@ -1130,7 +1130,7 @@ void Spell::EffectDummy(SpellEffectIndex eff_idx)
                         const SpellCooldowns& cm = ((Player*)m_caster)->GetSpellCooldownMap();
                         for (SpellCooldowns::const_iterator itr = cm.begin(); itr != cm.end();)
                         {
-                            SpellEntry const* spellInfo = sSpellStore.LookupEntry(itr->first);
+                            SpellEntry const* spellInfo = sSpellTemplate.LookupEntry<SpellEntry>(itr->first);
 
                             if (spellInfo->SpellFamilyName == SPELLFAMILY_HUNTER && spellInfo->Id != 23989 && GetSpellRecoveryTime(spellInfo) > 0)
                                 ((Player*)m_caster)->RemoveSpellCooldown((itr++)->first, true);
@@ -1177,7 +1177,7 @@ void Spell::EffectDummy(SpellEffectIndex eff_idx)
                 case 561:                                   // Judgement of command
                 {
                     if (unitTarget)
-                        if (SpellEntry const* spell_proto = sSpellStore.LookupEntry(m_currentBasePoints[eff_idx]))
+                        if (SpellEntry const* spell_proto = sSpellTemplate.LookupEntry<SpellEntry>(m_currentBasePoints[eff_idx]))
                         {
                             if (!unitTarget->hasUnitState(UNIT_STAT_STUNNED) && m_caster->GetTypeId() == TYPEID_PLAYER)
                             {
@@ -1298,7 +1298,7 @@ void Spell::EffectTriggerSpell(SpellEffectIndex eff_idx)
                 if (!itr->second.active || itr->second.disabled || itr->second.state == PLAYERSPELL_REMOVED)
                     continue;
 
-                SpellEntry const* spellInfo = sSpellStore.LookupEntry(itr->first);
+                SpellEntry const* spellInfo = sSpellTemplate.LookupEntry<SpellEntry>(itr->first);
                 if (!spellInfo)
                     continue;
 
@@ -1345,7 +1345,7 @@ void Spell::EffectTriggerSpell(SpellEffectIndex eff_idx)
     }
 
     // normal case
-    SpellEntry const* spellInfo = sSpellStore.LookupEntry(triggered_spell_id);
+    SpellEntry const* spellInfo = sSpellTemplate.LookupEntry<SpellEntry>(triggered_spell_id);
     if (!spellInfo)
     {
         sLog.outError("EffectTriggerSpell of spell %u: triggering unknown spell id %i", m_spellInfo->Id, triggered_spell_id);
@@ -1395,7 +1395,7 @@ void Spell::EffectTriggerMissileSpell(SpellEffectIndex effect_idx)
     uint32 triggered_spell_id = m_spellInfo->EffectTriggerSpell[effect_idx];
 
     // normal case
-    SpellEntry const* spellInfo = sSpellStore.LookupEntry(triggered_spell_id);
+    SpellEntry const* spellInfo = sSpellTemplate.LookupEntry<SpellEntry>(triggered_spell_id);
 
     if (!spellInfo)
     {
@@ -2080,7 +2080,15 @@ void Spell::EffectSummonChangeItem(SpellEffectIndex eff_idx)
     // prevent crash at access and unexpected charges counting with item update queue corrupt
     ClearCastItem();
 
-    player->ConvertItem(oldItem, newitemid);
+    uint32 curItemCount = player->GetItemCount(newitemid, true);
+
+    if (Item* newItem = player->ConvertItem(oldItem, newitemid))
+    {
+        player->ItemAddedQuestCheck(newItem->GetEntry(), newItem->GetCount());
+
+        // Push packet to client so it knows we've created an item and quest can show objective update
+        player->SendNewItem(newItem, newItem->GetCount() - curItemCount, true, false);
+    }
 }
 
 void Spell::EffectProficiency(SpellEffectIndex /*eff_idx*/)
@@ -2246,8 +2254,7 @@ void Spell::EffectDispel(SpellEffectIndex eff_idx)
     std::list <std::pair<SpellAuraHolder*, uint32> > dispel_list;
 
     // Create dispel mask by dispel type
-    uint32 dispel_type = m_spellInfo->EffectMiscValue[eff_idx];
-    uint32 dispelMask  = GetDispellMask(DispelType(dispel_type));
+    uint32 dispelMask  = GetDispellMask(DispelType(m_spellInfo->EffectMiscValue[eff_idx]));
     Unit::SpellAuraHolderMap const& auras = unitTarget->GetSpellAuraHolderMap();
     for (Unit::SpellAuraHolderMap::const_iterator itr = auras.begin(); itr != auras.end(); ++itr)
     {
@@ -3087,7 +3094,7 @@ void Spell::EffectLearnPetSpell(SpellEffectIndex eff_idx)
     if (!pet->isAlive())
         return;
 
-    SpellEntry const* learn_spellproto = sSpellStore.LookupEntry(m_spellInfo->EffectTriggerSpell[eff_idx]);
+    SpellEntry const* learn_spellproto = sSpellTemplate.LookupEntry<SpellEntry>(m_spellInfo->EffectTriggerSpell[eff_idx]);
     if (!learn_spellproto)
         return;
 
@@ -3939,7 +3946,7 @@ void Spell::EffectStuck(SpellEffectIndex /*eff_idx*/)
     pTarget->TeleportToHomebind(unitTarget == m_caster ? TELE_TO_SPELL : 0);
 
     // Stuck spell trigger Hearthstone cooldown
-    SpellEntry const* spellInfo = sSpellStore.LookupEntry(8690);
+    SpellEntry const* spellInfo = sSpellTemplate.LookupEntry<SpellEntry>(8690);
     if (!spellInfo)
         return;
     Spell spell(pTarget, spellInfo, true);
@@ -4407,14 +4414,14 @@ void Spell::EffectAddExtraAttacks(SpellEffectIndex /*eff_idx*/)
 
 void Spell::EffectParry(SpellEffectIndex /*eff_idx*/)
 {
-    if (unitTarget && unitTarget->GetTypeId() == TYPEID_PLAYER)
-        ((Player*)unitTarget)->SetCanParry(true);
+    if (unitTarget)
+        unitTarget->SetCanParry(true);
 }
 
 void Spell::EffectBlock(SpellEffectIndex /*eff_idx*/)
 {
-    if (unitTarget && unitTarget->GetTypeId() == TYPEID_PLAYER)
-        ((Player*)unitTarget)->SetCanBlock(true);
+    if (unitTarget)
+        unitTarget->SetCanBlock(true);
 }
 
 void Spell::EffectLeapForward(SpellEffectIndex eff_idx)
@@ -5128,6 +5135,7 @@ void Spell::EffectSkinPlayerCorpse(SpellEffectIndex /*eff_idx*/)
 
     ((Player*)unitTarget)->RemovedInsignia((Player*)m_caster);
 }
+
 void Spell::EffectBind(SpellEffectIndex eff_idx)
 {
     if (!unitTarget || unitTarget->GetTypeId() != TYPEID_PLAYER)
